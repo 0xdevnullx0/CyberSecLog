@@ -6,3 +6,6 @@
 
 # /*Defense in Depth*/
 >>>Defense in depth against configuration errors is just as important as defense in depth from attacks
+
+# /*Detecting Known Unknowns*/
+>>>You can't detect what you don't know about and if you don't know about an entire class of assets inside of your infrastructure you won't get any detection around those assets and they become a perfect entry point for an attacker
