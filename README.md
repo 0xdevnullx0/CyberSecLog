@@ -9,3 +9,6 @@
 
 # /*Detecting Known Unknowns*/
 >>>You can't detect what you don't know about and if you don't know about an entire class of assets inside of your infrastructure you won't get any detection around those assets and they become a perfect entry point for an attacker
+
+# /*Attacker*/
+>>>Your attackers have budgets, meetings, deliverables, and deadlines too
