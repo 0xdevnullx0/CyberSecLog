@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+
+# Runtime artifacts (keep out of VCS)
+cyberthreat.db
+cyberseclog.log
+mitre_attack_cache.json
+briefing_*.html
+
+# Editor
+.idea/
+.vscode/
+*.swp
