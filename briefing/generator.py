@@ -189,14 +189,162 @@ _HTML_WRAPPER = """\
 """
 
 
+# ── Template-based fallback briefing ─────────────────────────────────────────
+
+def _risk_div_class(score: float) -> str:
+    if score >= 80:
+        return "risk-critical"
+    if score >= 50:
+        return "risk-high"
+    return "risk-medium"
+
+
+def _threat_badge(score: float) -> tuple[str, str]:
+    """Return (level_text, badge_class) based on top risk score."""
+    if score >= 80:
+        return "CRITICAL", "badge-critical"
+    if score >= 60:
+        return "HIGH", "badge-high"
+    if score >= 40:
+        return "ELEVATED", "badge-elevated"
+    return "MODERATE", "badge-moderate"
+
+
+def _render_item_card(item: dict) -> str:
+    title = item.get("title", "Unknown")
+    source = item.get("source", "")
+    score = item.get("risk_score", 0)
+    factors = ", ".join(item.get("risk_factors", [])) or "—"
+    desc = (item.get("description") or "")[:400]
+    url = item.get("url", "")
+    cvss = item.get("cvss_score")
+    epss = item.get("epss_score")
+    div_cls = _risk_div_class(score)
+
+    cvss_str = ""
+    if cvss is not None:
+        cls = "cvss-10" if cvss >= 10 else ("cvss-9" if cvss >= 9 else "cvss-8" if cvss >= 8 else "")
+        cvss_str = f' &nbsp;<span class="{cls}">CVSS {cvss}</span>' if cls else f" &nbsp;CVSS {cvss}"
+
+    epss_str = f" &nbsp;EPSS {epss:.0%}" if epss is not None else ""
+
+    ref_str = f'&nbsp;<a href="{url}" target="_blank">[ref]</a>' if url else ""
+
+    return (
+        f'<div class="{div_cls}">'
+        f"<strong>{title}</strong>{cvss_str}{epss_str}{ref_str}<br>"
+        f"<small>Source: {source} &nbsp;|&nbsp; Risk Score: <strong>{score:.1f}</strong>"
+        f" &nbsp;|&nbsp; Factors: {factors}</small>"
+        + (f"<p style='margin:6px 0 0;font-size:.9em;'>{desc}</p>" if desc else "")
+        + "</div>"
+    )
+
+
+def _render_section(title: str, icon: str, items: list[dict], limit: int = 10) -> str:
+    if not items:
+        return ""
+    cards = "\n".join(_render_item_card(i) for i in items[:limit])
+    more = f"<p><em>…and {len(items) - limit} more items.</em></p>" if len(items) > limit else ""
+    return f"<h2>{icon} {title}</h2>\n{cards}\n{more}\n"
+
+
+def _generate_template_briefing(categorized: dict, all_items: list[dict]) -> str:
+    """Build a complete professional HTML briefing without the Claude API."""
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    today_label = datetime.now(timezone.utc).strftime("%A, %d %B %Y")
+
+    top_score = max((i.get("risk_score", 0) for i in all_items), default=0)
+    threat_level, badge_class = _threat_badge(top_score)
+
+    top5 = sorted(all_items, key=lambda x: x.get("risk_score", 0), reverse=True)[:5]
+
+    # ── Executive summary ────────────────────────────────────────────────────
+    crit_count = sum(1 for i in all_items if i.get("risk_score", 0) >= 80)
+    high_count = sum(1 for i in all_items if 60 <= i.get("risk_score", 0) < 80)
+    kev_count = sum(1 for i in all_items if "CISA KEV" in i.get("risk_factors", []))
+    zd_count = sum(1 for i in all_items if "zero-day" in i.get("risk_factors", []))
+    rce_count = sum(1 for i in all_items if "RCE" in i.get("risk_factors", []))
+
+    exec_summary = f"""
+<h2>&#128203; Executive Summary</h2>
+<p>Threat Level for <strong>{today_label}</strong>: <span class="{badge_class}">{threat_level}</span></p>
+<p>CyberSecLog analysed <strong>{len(all_items)}</strong> threat intelligence items across all monitored
+sources today. Key statistics:</p>
+<ul>
+  <li><strong>{crit_count}</strong> items rated <em>Critical</em> (risk score ≥ 80)</li>
+  <li><strong>{high_count}</strong> items rated <em>High</em> (risk score 60–79)</li>
+  <li><strong>{kev_count}</strong> items in the <em>CISA Known Exploited Vulnerabilities</em> catalog</li>
+  <li><strong>{zd_count}</strong> potential zero-day or unpatched vulnerabilities identified</li>
+  <li><strong>{rce_count}</strong> Remote Code Execution (RCE) vulnerabilities flagged</li>
+</ul>
+<p>Financial-sector teams should review Critical and High items immediately. Prioritise patching
+of any CISA KEV entries within 24–48 hours per CISA Binding Operational Directive 22-01.</p>
+"""
+
+    # ── Top 5 priority items ─────────────────────────────────────────────────
+    top5_html = "<h2>&#128680; Top Priority Items</h2>\n"
+    for rank, item in enumerate(top5, 1):
+        top5_html += f"<h3>#{rank} — {item.get('title', 'Unknown')}</h3>\n"
+        top5_html += _render_item_card(item) + "\n"
+
+    # ── Category sections ────────────────────────────────────────────────────
+    section_cfg = [
+        ("critical_cves",     "Critical Vulnerabilities & CVEs",          "&#128165;", 12),
+        ("threat_actors",     "Active Threat Actors & Campaigns",          "&#128373;", 10),
+        ("financial_threats", "Financial Sector Threats",                  "&#127981;", 10),
+        ("supply_chain",      "Supply Chain Risks",                        "&#9937;",   8),
+        ("mitre_activity",    "MITRE ATT&amp;CK Techniques",               "&#127919;", 10),
+        ("news_advisories",   "Advisories &amp; Industry News",            "&#128240;", 12),
+    ]
+
+    sections_html = ""
+    for key, label, icon, limit in section_cfg:
+        sections_html += _render_section(label, icon, categorized.get(key, []), limit)
+
+    # ── Recommended actions ──────────────────────────────────────────────────
+    actions = []
+    if kev_count:
+        actions.append(f"Patch <strong>{kev_count} CISA KEV</strong> vulnerability/ies immediately (BOD 22-01 deadline applies).")
+    if zd_count:
+        actions.append(f"Assess exposure to <strong>{zd_count} zero-day</strong> vulnerability/ies; apply vendor mitigations or workarounds.")
+    if rce_count:
+        actions.append(f"Prioritise remediation of <strong>{rce_count} RCE</strong> vulnerability/ies — these enable full system compromise.")
+    fin_items = categorized.get("financial_threats", [])
+    if fin_items:
+        actions.append("Review financial-sector threat indicators with your fraud and payment security teams.")
+    sc_items = categorized.get("supply_chain", [])
+    if sc_items:
+        actions.append("Audit third-party dependencies and software supply chain for listed compromised packages.")
+    actions.append("Ensure endpoint detection rules are updated to cover newly observed MITRE ATT&amp;CK techniques.")
+    actions.append("Review and rotate credentials for any systems affected by listed vulnerabilities.")
+    actions.append("Share critical IoCs with your SIEM/SOAR and threat intelligence platform.")
+
+    actions_html = "<h2>&#9989; Recommended Actions</h2>\n"
+    for action in actions:
+        actions_html += f'<div class="action-item">&#8226; {action}</div>\n'
+
+    inner_html = exec_summary + top5_html + sections_html + actions_html
+
+    return _HTML_WRAPPER.format(
+        date=today_str,
+        items_count=len(all_items),
+        content=inner_html,
+    )
+
+
 # ── Main generation function ───────────────────────────────────────────────────
 
 def generate_briefing(categorized: dict, all_items: list[dict]) -> str:
-    """Generate the full HTML briefing using Claude claude-opus-4-6.
+    """Generate the full HTML briefing.
 
-    Uses streaming to handle the large output without timeout issues.
+    Uses Claude claude-opus-4-6 with adaptive thinking when ANTHROPIC_API_KEY is set.
+    Falls back to a Jinja2-style template briefing when no API key is available.
     Returns the complete HTML string.
     """
+    if not config.ANTHROPIC_API_KEY:
+        log.info("ANTHROPIC_API_KEY not set — using built-in template briefing (no Claude call).")
+        return _generate_template_briefing(categorized, all_items)
+
     client = _get_client()
     system_prompt = _build_system_prompt()
     user_prompt = _build_user_prompt(categorized, all_items)

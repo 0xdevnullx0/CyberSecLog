@@ -138,10 +138,6 @@ def run_briefing(ranked: list[dict], categorized: dict, dry_run: bool = False) -
         _print_dry_run_summary(ranked, categorized)
         return ""
 
-    if not config.ANTHROPIC_API_KEY:
-        log.error("ANTHROPIC_API_KEY not set – cannot generate briefing.")
-        sys.exit(1)
-
     html = generator.generate_briefing(categorized, ranked)
     log.info("Briefing generated: %d chars", len(html))
 
@@ -237,6 +233,58 @@ def show_status() -> None:
     print("─" * 65 + "\n")
 
 
+# ── Test email ────────────────────────────────────────────────────────────────
+
+def send_test_email() -> None:
+    """Send a minimal test message to verify Gmail SMTP credentials."""
+    from briefing.email_sender import _is_configured, _save_to_file
+    import smtplib
+    from email.mime.text import MIMEText
+    import config as cfg
+
+    if not _is_configured():
+        print("\nEmail not fully configured. Set these values in .env:")
+        print("  EMAIL_FROM=you@gmail.com")
+        print("  EMAIL_PASSWORD=<16-char Gmail App Password>")
+        print("  EMAIL_TO=Sharath.rt@gmail.com")
+        print("  EMAIL_SMTP_HOST=smtp.gmail.com")
+        print("  EMAIL_SMTP_PORT=587")
+        print("\nGmail App Password setup:")
+        print("  1. Enable 2FA at myaccount.google.com/security")
+        print("  2. App Passwords → generate password for 'Mail'")
+        print("  3. Paste the 16-char code (no spaces) as EMAIL_PASSWORD")
+        return
+
+    subject = "[CyberSecLog] Test email — SMTP configuration verified"
+    body = (
+        "This is a test message from CyberSecLog.\n\n"
+        "Your Gmail SMTP configuration is working correctly.\n"
+        "Daily threat briefings will be delivered to this address.\n\n"
+        "-- CyberSecLog"
+    )
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = cfg.EMAIL_FROM
+    msg["To"] = ", ".join(cfg.EMAIL_TO)
+
+    try:
+        with smtplib.SMTP(cfg.EMAIL_SMTP_HOST, cfg.EMAIL_SMTP_PORT, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(cfg.EMAIL_FROM, cfg.EMAIL_PASSWORD)
+            server.sendmail(cfg.EMAIL_FROM, cfg.EMAIL_TO, msg.as_string())
+        print(f"\nTest email sent successfully to: {', '.join(cfg.EMAIL_TO)}")
+        log.info("Test email delivered to %s", ", ".join(cfg.EMAIL_TO))
+    except smtplib.SMTPAuthenticationError:
+        print("\nAuthentication failed. Check EMAIL_FROM and EMAIL_PASSWORD in .env")
+        print("Make sure you are using a Gmail App Password, not your regular password.")
+        log.error("SMTP auth failed during test email")
+    except Exception as exc:
+        print(f"\nFailed to send test email: {exc}")
+        log.error("Test email failed: %s", exc)
+
+
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
 def start_scheduler() -> None:
@@ -284,6 +332,7 @@ Examples:
   python main.py --now         # Run pipeline immediately
   python main.py --dry-run     # Collect & rank without generating/emailing
   python main.py --status      # Show DB status
+  python main.py --test-email  # Verify Gmail SMTP credentials
         """,
     )
     parser.add_argument(
@@ -298,6 +347,10 @@ Examples:
         "--status", action="store_true",
         help="Show the status of the last briefing and recent DB items."
     )
+    parser.add_argument(
+        "--test-email", action="store_true",
+        help="Send a short test email to verify Gmail SMTP configuration."
+    )
     args = parser.parse_args()
 
     print("CyberSecLog — Cyber Threat Intelligence Briefing System")
@@ -308,6 +361,10 @@ Examples:
 
     if args.status:
         show_status()
+        return
+
+    if args.test_email:
+        send_test_email()
         return
 
     if args.dry_run:
