@@ -50,17 +50,21 @@ def send_briefing(html_content: str, items_count: int = 0) -> bool:
     msg.attach(MIMEText(plain, "plain", "utf-8"))
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
+    smtp_user = config.EMAIL_SMTP_USER or config.EMAIL_FROM
     try:
         with smtplib.SMTP(config.EMAIL_SMTP_HOST, config.EMAIL_SMTP_PORT, timeout=30) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
-            server.login(config.EMAIL_FROM, config.EMAIL_PASSWORD)
+            server.login(smtp_user, config.EMAIL_PASSWORD)
             server.sendmail(config.EMAIL_FROM, config.EMAIL_TO, msg.as_string())
         log.info("Briefing email sent to: %s", ", ".join(config.EMAIL_TO))
         return True
     except smtplib.SMTPAuthenticationError:
-        log.error("SMTP authentication failed – check EMAIL_FROM / EMAIL_PASSWORD")
+        log.error(
+            "SMTP authentication failed – check EMAIL_SMTP_USER / EMAIL_PASSWORD. "
+            "For Brevo: use your account login email as EMAIL_SMTP_USER and the SMTP key as EMAIL_PASSWORD."
+        )
     except smtplib.SMTPException as exc:
         log.error("SMTP error: %s", exc)
     except OSError as exc:
@@ -72,8 +76,9 @@ def send_briefing(html_content: str, items_count: int = 0) -> bool:
 
 
 def _is_configured() -> bool:
+    smtp_user = config.EMAIL_SMTP_USER or config.EMAIL_FROM
     return bool(
-        config.EMAIL_FROM
+        smtp_user
         and config.EMAIL_PASSWORD
         and config.EMAIL_TO
         and config.EMAIL_SMTP_HOST

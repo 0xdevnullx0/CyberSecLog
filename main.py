@@ -236,30 +236,46 @@ def show_status() -> None:
 # ── Test email ────────────────────────────────────────────────────────────────
 
 def send_test_email() -> None:
-    """Send a minimal test message to verify Gmail SMTP credentials."""
-    from briefing.email_sender import _is_configured, _save_to_file
+    """Send a minimal test message to verify SMTP relay credentials."""
+    from briefing.email_sender import _is_configured
     import smtplib
     from email.mime.text import MIMEText
     import config as cfg
 
     if not _is_configured():
-        print("\nEmail not fully configured. Set these values in .env:")
-        print("  EMAIL_FROM=you@gmail.com")
-        print("  EMAIL_PASSWORD=<16-char Gmail App Password>")
-        print("  EMAIL_TO=Sharath.rt@gmail.com")
-        print("  EMAIL_SMTP_HOST=smtp.gmail.com")
-        print("  EMAIL_SMTP_PORT=587")
-        print("\nGmail App Password setup:")
+        print("\nEmail not fully configured. Set these values in .env:\n")
+        print("── Option A: Brevo free relay (recommended) ──────────────────────────────")
+        print("  Allows no-reply@cyberseclog.app as FROM, 300 emails/day, no credit card")
+        print("  1. Sign up free at https://app.brevo.com")
+        print("  2. SMTP & API → Generate SMTP Key")
+        print("  3. Add to .env:")
+        print("       EMAIL_SMTP_HOST=smtp-relay.brevo.com")
+        print("       EMAIL_SMTP_PORT=587")
+        print("       EMAIL_FROM=no-reply@cyberseclog.app")
+        print("       EMAIL_SMTP_USER=your-brevo-login@email.com")
+        print("       EMAIL_PASSWORD=<brevo-smtp-key>")
+        print()
+        print("── Option B: Gmail App Password ──────────────────────────────────────────")
         print("  1. Enable 2FA at myaccount.google.com/security")
-        print("  2. App Passwords → generate password for 'Mail'")
-        print("  3. Paste the 16-char code (no spaces) as EMAIL_PASSWORD")
+        print("  2. App Passwords → Mail → generate 16-char code")
+        print("  3. Add to .env:")
+        print("       EMAIL_SMTP_HOST=smtp.gmail.com")
+        print("       EMAIL_SMTP_PORT=587")
+        print("       EMAIL_FROM=youraddress@gmail.com")
+        print("       EMAIL_PASSWORD=<16-char-app-password>")
+        print()
+        print("  EMAIL_TO=Sharath.rt@gmail.com  ← already set")
         return
 
+    smtp_user = cfg.EMAIL_SMTP_USER or cfg.EMAIL_FROM
     subject = "[CyberSecLog] Test email — SMTP configuration verified"
     body = (
-        "This is a test message from CyberSecLog.\n\n"
-        "Your Gmail SMTP configuration is working correctly.\n"
-        "Daily threat briefings will be delivered to this address.\n\n"
+        f"This is a test message from CyberSecLog.\n\n"
+        f"SMTP relay: {cfg.EMAIL_SMTP_HOST}:{cfg.EMAIL_SMTP_PORT}\n"
+        f"From: {cfg.EMAIL_FROM}\n"
+        f"Auth user: {smtp_user}\n\n"
+        "Your SMTP configuration is working. Daily threat briefings will be\n"
+        "delivered to this address from no-reply@cyberseclog.app.\n\n"
         "-- CyberSecLog"
     )
     msg = MIMEText(body, "plain", "utf-8")
@@ -272,13 +288,16 @@ def send_test_email() -> None:
             server.ehlo()
             server.starttls()
             server.ehlo()
-            server.login(cfg.EMAIL_FROM, cfg.EMAIL_PASSWORD)
+            server.login(smtp_user, cfg.EMAIL_PASSWORD)
             server.sendmail(cfg.EMAIL_FROM, cfg.EMAIL_TO, msg.as_string())
         print(f"\nTest email sent successfully to: {', '.join(cfg.EMAIL_TO)}")
         log.info("Test email delivered to %s", ", ".join(cfg.EMAIL_TO))
     except smtplib.SMTPAuthenticationError:
-        print("\nAuthentication failed. Check EMAIL_FROM and EMAIL_PASSWORD in .env")
-        print("Make sure you are using a Gmail App Password, not your regular password.")
+        print("\nAuthentication failed.")
+        print(f"  SMTP host:  {cfg.EMAIL_SMTP_HOST}")
+        print(f"  Auth user:  {smtp_user}")
+        print("  For Brevo: ensure EMAIL_SMTP_USER is your Brevo account login email")
+        print("             and EMAIL_PASSWORD is the SMTP key (not your account password).")
         log.error("SMTP auth failed during test email")
     except Exception as exc:
         print(f"\nFailed to send test email: {exc}")

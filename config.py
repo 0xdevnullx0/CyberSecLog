@@ -11,9 +11,12 @@ ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 OTX_API_KEY: str = os.getenv("OTX_API_KEY", "")
 
 # ── Email ──────────────────────────────────────────────────────────────────────
-EMAIL_SMTP_HOST: str = os.getenv("EMAIL_SMTP_HOST", "smtp.gmail.com")
+EMAIL_SMTP_HOST: str = os.getenv("EMAIL_SMTP_HOST", "smtp-relay.brevo.com")
 EMAIL_SMTP_PORT: int = int(os.getenv("EMAIL_SMTP_PORT", "587"))
-EMAIL_FROM: str = os.getenv("EMAIL_FROM", "")
+EMAIL_FROM: str = os.getenv("EMAIL_FROM", "no-reply@cyberseclog.app")
+# LOGIN user for SMTP auth — defaults to EMAIL_FROM if not set separately
+# (Brevo requires the account login email, which differs from the FROM address)
+EMAIL_SMTP_USER: str = os.getenv("EMAIL_SMTP_USER", "") or os.getenv("EMAIL_FROM", "")
 EMAIL_PASSWORD: str = os.getenv("EMAIL_PASSWORD", "")
 EMAIL_TO: list[str] = [
     addr.strip()
